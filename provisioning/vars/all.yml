@@ -1,0 +1,5 @@
+---
+app_name: wstunnel
+root_dir: '/app/wstunnel'
+deploy_dir: '/app/wstunnel/{{app_name}}_service'
+user_home_path: '/app/home/{{ app_user }}'

@@ -1,0 +1,16 @@
+- name: Stopping service on target machine
+  service: name={{app_name}} state=stopped
+  ignore_errors: yes
+
+- name: Setting up the main service Procfile
+  template: src=files/services/Procfile.j2 dest={{deploy_dir}}/Procfile owner={{app_user}} group={{app_group}} mode=0700
+
+- shell: cd {{deploy_dir}} && nf export -u {{app_user}} -a {{app_name}} -t systemd -o /lib/systemd/system/
+
+- name: Transfer service artifacts to deploy folder
+  copy: src=../binaries/{{app_name}} dest={{deploy_dir}}/ owner={{app_user}} group={{app_group}} mode=0755
+
+- name: Restarting systemd services
+  systemd: name={{item}} state=restarted daemon_reload=yes
+  with_items:
+    - "{{app_name + '-' + app_name + '-1'}}"

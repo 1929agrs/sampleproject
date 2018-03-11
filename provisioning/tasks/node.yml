@@ -1,0 +1,19 @@
+---
+- shell: which node
+  register: nodejs_present
+  ignore_errors: True
+
+- block:
+
+  - shell: curl -sL https://deb.nodesource.com/setup_8.x | bash -
+  - shell: apt-get update
+  - apt: name='nodejs' state=present
+
+  when: nodejs_present|failed
+
+- shell: which nf
+  register: foreman_present
+  ignore_errors: True
+
+- shell: npm install -g foreman
+  when: foreman_present|failed

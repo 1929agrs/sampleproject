@@ -1,0 +1,9 @@
+---
+- group: name={{app_group}} state=present
+
+- name: Create Root home directory if does not exist
+  file: path={{user_home_path}} state=directory
+
+- user: name={{app_user}} group={{app_group}} home={{user_home_path}} createhome=yes state=present
+
+- file: name={{deploy_dir}} state=directory owner={{app_user}} group={{app_group}} mode=0755

@@ -1,0 +1,4 @@
+ssl_certificate_path: '{{ user_home_path }}/.ssl/true-order.com/server.crt'
+ssl_certificate_key_path: '{{ user_home_path }}/.ssl/true-order.com/server.key'
+server_name: '*.true-order.com'
+proxy_pass: http://127.0.0.1:7080

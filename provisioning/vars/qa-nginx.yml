@@ -1,0 +1,4 @@
+ssl_certificate_path: /etc/letsencrypt/live/406787.tunnel.true-saas.com/fullchain.pem
+ssl_certificate_key_path: /etc/letsencrypt/live/406787.tunnel.true-saas.com/privkey.pem
+server_name: 406787.tunnel.true-saas.com
+proxy_pass: http://127.0.0.1:7080

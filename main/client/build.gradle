@@ -1,0 +1,16 @@
+golang {
+    packagePath = "gofrugal/wstunnel/main/client"
+}
+
+task buildForLinux(type: com.github.blindpirate.gogradle.Go, dependsOn: 'vendor') {
+    environment GOOS: 'linux', GOARCH: 'amd64'
+    go 'build -o ./.gogradle/gft_gateway gofrugal/wstunnel/main/client'
+}
+
+task buildForWindows(type: com.github.blindpirate.gogradle.Go, dependsOn: 'vendor') {
+    environment GOOS: 'windows', GOARCH: '386'
+    go 'build -ldflags -H=windowsgui -o ./.gogradle/gft_gateway.exe gofrugal/wstunnel/main/client'
+}
+
+build.dependsOn buildForLinux
+build.dependsOn buildForWindows

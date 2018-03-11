@@ -1,0 +1,20 @@
+---
+- hosts: all
+  become: yes
+  vars_files:
+    - vars/all.yml
+    - vars/prod.yml
+    - vars/prod-nginx.yml
+
+  gather_facts: False
+  pre_tasks:
+    - name: Install python for Ansible
+      raw: test -e /usr/bin/python || (apt -y update && apt install -y python-minimal)
+      changed_when: False
+    - setup: # aka gather_facts
+
+  tasks:
+    - include: tasks/create_env.yml
+    - include: tasks/node.yml
+    - include: tasks/nginx.yml
+    - include: tasks/deploy/app.yml

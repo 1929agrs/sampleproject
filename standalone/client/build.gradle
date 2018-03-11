@@ -1,0 +1,8 @@
+golang {
+    packagePath = "gofrugal/wstunnel/standalone/client"
+}
+
+build {
+    targetPlatform = ['linux-amd64', 'windows-386']
+    outputLocation = './.gogradle/tunnel_client_sa${GOEXE}'
+}

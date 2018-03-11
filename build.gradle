@@ -1,0 +1,286 @@
+buildscript {
+    repositories {
+        jcenter()
+        mavenCentral()
+        maven {
+            url "https://plugins.gradle.org/m2/"
+        }
+    }
+    dependencies {
+        classpath "gradle.plugin.com.github.blindpirate:gogradle:0.7.0"
+        classpath 'de.undercouch:gradle-download-task:3.2.0'
+    }
+}
+
+apply plugin: 'de.undercouch.download'
+
+repositories {
+    jcenter()
+    mavenCentral()
+}
+
+configurations {
+    ftpAntTask
+    sshAntTask
+    sshexecAntTask
+}
+
+dependencies {
+    ftpAntTask("org.apache.ant:ant-commons-net:1.9.6") {
+        module("commons-net:commons-net:1.4.1") {
+            dependencies "oro:oro:2.0.8:jar"
+        }
+    }
+    sshAntTask 'org.apache.ant:ant-jsch:1.7.1', 'jsch:jsch:0.1.29'
+    sshexecAntTask 'org.apache.ant:ant-jsch:1.7.0'
+}
+
+task createGoExecutables {
+    dependsOn ':main:client:build'
+    dependsOn ':main:server:build'
+}
+
+task copyClientGoExecutable(type: Copy) {
+    from ('main/client/.gogradle') {
+        include 'gft_gateway*'
+    }
+    into 'build/client'
+}
+
+task copyServerGoExecutable(type: Copy) {
+    from ('main/server/.gogradle') {
+        include 'wstunnel'
+    }
+    into 'build/server'
+}
+
+task copyGoExecutables(type: GradleBuild, dependsOn: createGoExecutables) {
+    tasks = ['copyClientGoExecutable', 'copyServerGoExecutable']
+}
+
+task showDependencies(type: GradleBuild) {
+    tasks = [':tunnel:dependencies', ':standalone:client:dependencies',
+             ':main:client:dependencies', ':main:server:dependencies']
+}
+
+subprojects {
+
+    it.apply plugin: 'com.github.blindpirate.gogradle'
+    it.golang {
+        goVersion = '1.9.2'
+    }
+
+    def projectPath = it.getPath()
+
+    if (projectPath == "tunnel") {
+        it.dependencies {
+            golang {
+                build name: 'github.com/gorilla/websocket', version: 'ea4d1f681babbce9545c9c5f3d5194a789c89f5b'
+                build name: 'gopkg.in/inconshreveable/log15.v2', version: '0decfc6c20d9ca0ad143b0e89dcaa20f810b4fb3'
+                build name: 'github.com/mattn/go-colorable', version: 'd67e0b7d1797975196499f79bcc322c08b9f218b'
+                build name: 'gopkg.in/natefinch/lumberjack.v2', version: 'a96e63847dc3c67d17befa69c303767e2f84e54f'
+                // build name: 'github.com/gorilla/mux', version: '7f08801859139f86dfafd1c296e2cba9a80d292e'
+
+                test name: 'github.com/onsi/ginkgo', version: '17ea479729ee427265ac1e913443018350946ddf'
+                test name: 'github.com/onsi/gomega', version: '8adf9e1730c55cdc590de7d49766cb2acc88d8f2'
+            }
+        }
+    }
+
+    if (projectPath == ":main:client") {
+        it.dependencies {
+            golang {
+                build name: 'gopkg.in/ini.v1', version: '20b96f641a5ea98f2f8619ff4f3e061cff4833bd'
+                build name: 'github.com/marcsauter/single', version: '66f9354a88e3a298d58a593ae28e73ee923e41e1'
+            }
+        }
+    }
+
+    if(projectPath == ":main:client" || projectPath == ":main:server" || projectPath == ":standalone:client") {
+        it.dependencies {
+            golang {
+                build name: 'gopkg.in/inconshreveable/log15.v2', version: '0decfc6c20d9ca0ad143b0e89dcaa20f810b4fb3'
+                build name: 'gofrugal/wstunnel/tunnel', dir: project(':tunnel').projectDir
+            }
+        }
+    }
+}
+
+/** ~~~~~~~~~~~~~~~~~~~~ VERSION ~~~~~~~~~~~~~~~~~~~ **/
+
+static def getVersion() {
+    return System.getenv('GO_PIPELINE_LABEL') ? System.getenv('GO_PIPELINE_LABEL') : '0.0.0.DEVEL'
+}
+
+static def writeVersionToGoFile(String versionFilePath) {
+    def file = new File(versionFilePath)
+    if (file.exists()) {
+        file.delete()
+    }
+    file.createNewFile()
+    file.text =
+            """package main
+
+const VV = "${getVersion()}"
+"""
+}
+
+static def writeVersionToJsonFile(String versionFilePath) {
+    def file = new File(versionFilePath)
+    if (file.exists()) {
+        file.delete()
+    }
+    file.createNewFile()
+    file.text =
+            """{
+    "appVersion" : "${getVersion()}"
+}"""
+}
+
+task createClientVersionFile {
+    doLast {
+        writeVersionToGoFile("$projectDir/main/client/version.go")
+        writeVersionToJsonFile("$projectDir/version.json")
+    }
+}
+
+task createServerVersionFile {
+    doLast {
+        writeVersionToGoFile("$projectDir/main/server/version.go")
+        writeVersionToJsonFile("$projectDir/version.json")
+    }
+}
+
+import de.undercouch.gradle.tasks.download.Download
+import groovy.json.JsonSlurper
+
+//noinspection GroovyAssignabilityCheck
+task downloadAuthProperties(type: Download) {
+    src 'http://posdownloads/pos/downloads/Admin/auth.properties'
+    dest buildDir
+}
+
+def readFtpPasswordFromProperties() {
+    def props = new Properties()
+    props.load(new FileInputStream("/${buildDir}/auth.properties"))
+
+    props.getProperty("login.auth")
+}
+
+ext {
+    readFtpPasswordFromProperties = this.&readFtpPasswordFromProperties
+}
+
+//noinspection GroovyAssignabilityCheck
+task uploadArtifacts(dependsOn: 'downloadAuthProperties') {
+    doLast {
+
+        File jsonFile = new File("version.json")
+        def parsedJson = new JsonSlurper().parseText(jsonFile.text)
+
+        def buildPath = "./build/client/"
+        def binaryFiles = ["gft_gateway", "gft_gateway.exe"]
+        ant.checksum file: "${buildPath}${binaryFiles[0]}"
+        ant.checksum file: "${buildPath}${binaryFiles[1]}"
+
+        ext.ftpPassword = readFtpPasswordFromProperties()
+
+        ant {
+            taskdef(name: 'ftp',
+                    classname: 'org.apache.tools.ant.taskdefs.optional.net.FTP',
+                    classpath: configurations.ftpAntTask.asPath)
+
+            taskdef(
+                    name: 'scp',
+                    classname: 'org.apache.tools.ant.taskdefs.optional.ssh.Scp',
+                    classpath: configurations.sshAntTask.asPath)
+
+            taskdef(name: 'sshexec',
+                    classname: 'org.apache.tools.ant.taskdefs.optional.ssh.SSHExec',
+                    classpath: configurations.sshexecAntTask.asPath)
+
+            def dailyFolderName = "Daily/"
+            def dailyDirectory = "/home/web/html/pos/downloads/GftGateway/${dailyFolderName}"
+            def dateForlder = new Date().format('yyyy-MM-dd')
+            folderName =  (System.getenv('env') == "prod") ? "Release/" + parsedJson.appVersion : dailyFolderName + dateForlder
+            def uploadDirectory = "/home/web/html/pos/downloads/GftGateway/${folderName}"
+            def server = "posdownloads"
+
+            println("Uploading to server ${server} at location ${uploadDirectory}")
+
+            ftp(action: "mkdir", server: server, userid: "web", password: ftpPassword, remoteDir: uploadDirectory) {
+            }
+
+            ftp(server: server, userid: "web", password: ftpPassword, remoteDir: uploadDirectory, "newer": "no", "binary": "yes") {
+                fileset(dir: "${buildPath}") {
+                    include(name: binaryFiles[0])
+                    include(name: binaryFiles[1])
+                }
+            }
+
+            def file = new File("$projectDir/latest.properties")
+            file.createNewFile()
+            file.text = "dir=${dateForlder}"
+
+            ftp(server: server, userid: "web", password: ftpPassword, remoteDir: dailyDirectory) {
+                fileset(dir: './') {
+                    include(name: 'latest.properties')
+                }
+            }
+
+            if(System.getenv('env') == "prod" && false){
+                def releaseDirectory = "/home/rdload/downloads/GftGateway/${folderName}"
+                server = "download.gofrugal.com"
+                println("Uploading to server ${server} at location ${releaseDirectory}")
+
+                ant.sshexec(host: server, username: "rdload", keyfile: "/var/go/.ssh/id_rsa",
+                        verbose: "true", trust: "true",
+                        command: "mkdir -p ${releaseDirectory}") {
+                }
+
+                ant.scp(
+                        todir: "rdload@${server}:${releaseDirectory}",
+                        keyfile: "/var/go/.ssh/id_rsa",
+                        verbose: "true",
+                        passphrase: '',
+                        trust: "true") {
+                    fileset(dir: "${buildPath}") {
+                        include(name: binaryFiles[0])
+                        include(name: binaryFiles[1])
+                    }
+                }
+            }
+
+            println("Upload complete !!!")
+        }
+    }
+}
+
+//noinspection GroovyAssignabilityCheck
+task publish(/*type: Exec, */dependsOn: uploadArtifacts) {
+    doLast {
+        println "Proxy -----> ${System.getenv('http_proxy')}"
+        // commandLine "bash", "./add_version.sh"
+    }
+}
+
+/** ~~~~~~~~~~~~~~~~~~~~~~ CLEAN ~~~~~~~~~~~~~~~~~~~~~~~~~ **/
+
+task cleanBuildFolder {
+    doLast {
+        delete "build"
+    }
+}
+
+task cleanClient(type: GradleBuild) {
+    tasks = [':main:client:clean', 'cleanBuildFolder']
+}
+
+task cleanServer(type: GradleBuild) {
+    tasks = [':main:server:clean', 'cleanBuildFolder']
+}
+
+task cleanAll(type: GradleBuild) {
+    tasks = ['cleanBuildFolder', ':tunnel:clean', ':standalone:client:clean',
+            ':main:client:clean', ':main:server:clean']
+}
